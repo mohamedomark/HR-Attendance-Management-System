@@ -196,7 +196,7 @@ const Dashboard: React.FC = () => {
       {/* Welcome Header */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <h2 className="text-2xl font-bold text-gray-900">
-          {t('common.loading').replace('...', '')} {userProfile?.name}
+          {userProfile?.name}
         </h2>
         <p className="text-gray-500 mt-1">{userProfile?.position} • {userProfile?.employeeId}</p>
       </div>
