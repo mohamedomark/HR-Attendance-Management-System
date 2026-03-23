@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user profile information, including roles and job titles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique ID of the user." },
+        "name": { "type": "string", "description": "The full name of the employee." },
+        "email": { "type": "string", "format": "email", "description": "The email address of the employee." },
+        "role": { "type": "string", "enum": ["employee", "hr-admin"], "description": "The role of the user." },
+        "position": { "type": "string", "description": "The job title of the employee." },
+        "employeeId": { "type": "string", "description": "The unique employee ID." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user was created." }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Attendance": {
+      "title": "Attendance Record",
+      "description": "Stores daily attendance logs for employees.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The ID of the employee." },
+        "date": { "type": "string", "format": "date", "description": "The date of the attendance (YYYY-MM-DD)." },
+        "checkIn": { "type": "string", "format": "date-time", "description": "The check-in timestamp." },
+        "checkOut": { "type": "string", "format": "date-time", "description": "The check-out timestamp." },
+        "status": { "type": "string", "enum": ["absent", "working", "completed", "incomplete", "overtime", "leave"], "description": "The attendance status." },
+        "workingHours": { "type": "number", "description": "The total working hours for the day." },
+        "manualOverride": { "type": "boolean", "description": "Whether the record was manually updated by HR." },
+        "overrideReason": { "type": "string", "description": "The reason for the manual override." },
+        "updatedBy": { "type": "string", "description": "The ID of the HR admin who performed the override." }
+      },
+      "required": ["uid", "date", "status"]
+    },
+    "Settings": {
+      "title": "System Settings",
+      "description": "Global settings for the attendance system.",
+      "type": "object",
+      "properties": {
+        "workStartTime": { "type": "string", "description": "The standard work start time (e.g., '09:00')." },
+        "lateThresholdMinutes": { "type": "number", "description": "Minutes after start time to be considered late." }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents."
+    },
+    "/attendance/{recordId}": {
+      "schema": "Attendance",
+      "description": "Attendance log documents."
+    },
+    "/settings/global": {
+      "schema": "Settings",
+      "description": "Global system settings."
+    }
+  }
+}

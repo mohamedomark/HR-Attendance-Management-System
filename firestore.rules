@@ -1,0 +1,163 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - name: string (required, min 1, max 100)
+    //   - email: string (required, email format)
+    //   - role: string (required, enum: ['employee', 'hr-admin'])
+    //   - position: string (optional)
+    //   - employeeId: string (optional)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: attendance
+    // Document ID: {recordId}
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - date: string (required, YYYY-MM-DD)
+    //   - checkIn: timestamp (optional)
+    //   - checkOut: timestamp (optional)
+    //   - status: string (required, enum: ['absent', 'working', 'completed', 'incomplete', 'overtime', 'leave'])
+    //   - workingHours: number (optional)
+    //   - manualOverride: bool (optional)
+    //   - overrideReason: string (optional)
+    //   - updatedBy: string (optional)
+    //
+    // Collection: settings
+    // Document ID: system
+    // Fields:
+    //   - workStartTime: string (e.g., '09:00')
+    //   - lateThresholdMinutes: number
+    //   - autoCheckOutTime: string (e.g., '23:59')
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          (request.auth.token.email == "mohamedomar000187@gmail.com" && request.auth.token.email_verified == true) ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'hr-admin')
+        );
+    }
+
+    function isManager() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager';
+    }
+
+    function isTeamMember(employeeUid) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(employeeUid)) &&
+        get(/databases/$(database)/documents/users/$(employeeUid)).data.managerId == request.auth.uid;
+    }
+
+    function isValidUser(data) {
+      let allowedFields = ['uid', 'name', 'email', 'role', 'position', 'employeeId', 'managerId', 'isDeleted', 'createdAt'];
+      return data.keys().hasOnly(allowedFields) &&
+             data.keys().hasAll(['uid', 'name', 'email', 'role', 'createdAt']) &&
+             data.uid is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             isValidEmail(data.email) &&
+             data.role in ['employee', 'hr-admin', 'manager'] &&
+             (!('position' in data) || (data.position is string && data.position.size() <= 100)) &&
+             (!('employeeId' in data) || (data.employeeId is string && data.employeeId.size() <= 50)) &&
+             (!('managerId' in data) || data.managerId is string) &&
+             (!('isDeleted' in data) || data.isDeleted is bool) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidAttendance(data) {
+      let allowedFields = ['uid', 'date', 'checkIn', 'checkOut', 'status', 'workingHours', 'remainingHours', 'overtimeHours', 'manualOverride', 'overrideReason', 'updatedBy', 'pauses', 'isAutoCompleted', 'workingMinutes'];
+      let allowedStatuses = ['absent', 'working', 'completed', 'incomplete', 'overtime', 'leave', 'paused', 'auto-completed'];
+      
+      return data.keys().hasOnly(allowedFields) &&
+             data.keys().hasAll(['uid', 'date', 'status']) &&
+             data.uid is string &&
+             data.date is string && data.date.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.status in allowedStatuses &&
+             (!('checkIn' in data) || data.checkIn is timestamp) &&
+             (!('checkOut' in data) || data.checkOut is timestamp) &&
+             (!('workingHours' in data) || (data.workingHours is number && data.workingHours >= 0)) &&
+             (!('remainingHours' in data) || (data.remainingHours is number && data.remainingHours >= 0)) &&
+             (!('overtimeHours' in data) || (data.overtimeHours is number && data.overtimeHours >= 0)) &&
+             (!('manualOverride' in data) || data.manualOverride is bool) &&
+             (!('overrideReason' in data) || (data.overrideReason is string && data.overrideReason.size() <= 1000)) &&
+             (!('updatedBy' in data) || data.updatedBy is string) &&
+             (!('pauses' in data) || data.pauses is list) &&
+             (!('isAutoCompleted' in data) || data.isAutoCompleted is bool) &&
+             (!('workingMinutes' in data) || data.workingMinutes is number);
+    }
+
+    function isValidSettings(data) {
+      let allowedFields = ['workStartTime', 'lateThresholdMinutes', 'autoCheckOutTime'];
+      return data.keys().hasOnly(allowedFields) &&
+             data.workStartTime is string && data.workStartTime.matches("^\\d{2}:\\d{2}$") &&
+             data.lateThresholdMinutes is number &&
+             (!('autoCheckOutTime' in data) || (data.autoCheckOutTime is string && data.autoCheckOutTime.matches("^\\d{2}:\\d{2}$")));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /settings/system {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidSettings(request.resource.data);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin() || isManager();
+      allow create: if isAuthenticated() && (
+        isOwner(userId) && (
+          isValidUser(request.resource.data) && (
+            request.resource.data.role == 'employee' || 
+            (request.resource.data.role == 'hr-admin' && request.auth.token.email == "mohamedomar000187@gmail.com")
+          )
+        ) || isAdmin()
+      );
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin()) &&
+                    request.resource.data.uid == resource.data.uid &&
+                    request.resource.data.createdAt == resource.data.createdAt &&
+                    (isOwner(userId) ? request.resource.data.role == resource.data.role : true);
+    }
+
+
+    match /attendance/{recordId} {
+      allow read: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin() || isTeamMember(resource.data.uid));
+      allow create: if isAuthenticated() && (request.resource.data.uid == request.auth.uid || isAdmin()) && isValidAttendance(request.resource.data);
+      allow update: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin() || isTeamMember(resource.data.uid)) && 
+                    isValidAttendance(request.resource.data) &&
+                    request.resource.data.uid == resource.data.uid &&
+                    request.resource.data.date == resource.data.date;
+      allow delete: if isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && (isAdmin() || isManager());
+    }
+
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "HR Attendance Management System",
+  "description": "A full-stack HR Attendance Management System with employee check-in/out, HR dashboard, and manual override capabilities, supporting English and Arabic.",
+  "requestFramePermissions": []
+}
