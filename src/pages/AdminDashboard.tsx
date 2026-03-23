@@ -17,7 +17,7 @@ import {
 } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { AttendanceRecord, UserProfile, AttendanceStatus, SystemSettings, AuditLog } from '../types';
+import { AttendanceRecord, UserProfile, AttendanceStatus } from '../types';
 import { format, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { 
   Users, 
@@ -40,11 +40,10 @@ import { cn, formatTime12h, formatDuration, getRemainingOrOvertime, calculateWor
 import { toast } from 'sonner';
 
 const AdminDashboard: React.FC = () => {
-  const { user, userProfile, isAdmin, isManager } = useAuth();
-  const { t, isRtl } = useLanguage();
+  const { user, isAdmin } = useAuth();
+  const { t, formatStatus, isRtl } = useLanguage();
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<UserProfile[]>([]);
-  const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
   
   // Filters
@@ -76,46 +75,31 @@ const AdminDashboard: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin && !isManager) return;
-
-    // Fetch Settings
-    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'system'), (snapshot) => {
-      if (snapshot.exists()) {
-        setSettings(snapshot.data() as SystemSettings);
-      }
-    });
+    if (!isAdmin) return;
 
     const qAttendance = query(collection(db, 'attendance'), orderBy('date', 'desc'));
     const unsubscribeAttendance = onSnapshot(qAttendance, (snapshot) => {
-      const allRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AttendanceRecord[];
-      setRecords(allRecords);
+      setRecords(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AttendanceRecord[]);
       setLoading(false);
     });
 
-    const qEmployees = query(collection(db, 'users'), where('isDeleted', '==', false));
+    const qEmployees = query(collection(db, 'users'), where('role', '==', 'employee'));
     const unsubscribeEmployees = onSnapshot(qEmployees, (snapshot) => {
-      const allEmps = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() })) as UserProfile[];
-      
-      if (isManager && userProfile) {
-        setEmployees(allEmps.filter(emp => emp.managerId === userProfile.uid));
-      } else {
-        setEmployees(allEmps);
-      }
+      setEmployees(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() })) as UserProfile[]);
     });
 
     return () => {
-      unsubscribeSettings();
       unsubscribeAttendance();
       unsubscribeEmployees();
     };
-  }, [isAdmin, isManager, userProfile]);
+  }, [isAdmin]);
 
   const stats = useMemo(() => {
     const todayRecords = records.filter(r => r.date === format(new Date(), 'yyyy-MM-dd'));
     return {
       total: employees.length,
       working: todayRecords.filter(r => r.status === 'working').length,
-      completed: todayRecords.filter(r => r.status === 'completed' || r.status === 'overtime' || r.status === 'auto-completed').length,
+      completed: todayRecords.filter(r => r.status === 'completed' || r.status === 'overtime').length,
       absent: employees.length - todayRecords.length
     };
   }, [records, employees]);
@@ -170,6 +154,81 @@ const AdminDashboard: React.FC = () => {
     };
   }, [filteredRecords, dateFilter, currentTime]);
 
+  const handlePause = (record: AttendanceRecord) => {
+    // Validation
+    if (!record.checkIn) {
+      toast.error("Cannot pause. Employee has not checked in.");
+      return;
+    }
+    if (record.status === 'paused') {
+      toast.error("Employee is already paused.");
+      return;
+    }
+    if (record.status !== 'working') {
+      toast.error("Pause is only allowed when employee is working.");
+      return;
+    }
+
+    setConfirmAction({
+      title: "Pause Employee",
+      message: "Are you sure you want to pause this employee's work?",
+      onConfirm: async () => {
+        if (!user) return;
+        
+        const now = Timestamp.now();
+        const pauses = [...(record.pauses || [])];
+        pauses.push({ start: now });
+        
+        try {
+          await updateDoc(doc(db, 'attendance', record.id!), {
+            status: 'paused',
+            pauses
+          });
+          toast.success("Employee paused successfully.");
+        } catch (error) {
+          toast.error("Something went wrong. Please try again.");
+          handleFirestoreError(error, OperationType.UPDATE, `attendance/${record.id}`);
+        }
+      }
+    });
+    setIsConfirmModalOpen(true);
+  };
+
+  const handleResume = (record: AttendanceRecord) => {
+    // Validation
+    if (record.status !== 'paused') {
+      toast.error("Resume is only allowed when employee is paused.");
+      return;
+    }
+
+    setConfirmAction({
+      title: "Resume Employee",
+      message: "Are you sure you want to resume this employee's work?",
+      onConfirm: async () => {
+        if (!user) return;
+        
+        const now = Timestamp.now();
+        const pauses = [...(record.pauses || [])];
+        const lastPause = pauses[pauses.length - 1];
+        if (lastPause && !lastPause.end) {
+          lastPause.end = now;
+        }
+        
+        try {
+          await updateDoc(doc(db, 'attendance', record.id!), {
+            status: 'working',
+            pauses
+          });
+          toast.success("Employee resumed successfully.");
+        } catch (error) {
+          toast.error("Failed to resume. Please try again.");
+          handleFirestoreError(error, OperationType.UPDATE, `attendance/${record.id}`);
+        }
+      }
+    });
+    setIsConfirmModalOpen(true);
+  };
+
   const handleReset = (record: AttendanceRecord) => {
     setConfirmAction({
       title: "Reset Attendance",
@@ -189,130 +248,13 @@ const AdminDashboard: React.FC = () => {
     setIsConfirmModalOpen(true);
   };
 
-  const handlePause = async (record: AttendanceRecord, employee: UserProfile) => {
-    if (!user) return;
-    try {
-      const now = Timestamp.now();
-      const pauses = record.pauses || [];
-      
-      await updateDoc(doc(db, 'attendance', record.id), {
-        status: 'paused',
-        pauses: [...pauses, { start: now }]
-      });
-
-      // Audit Log
-      await addDoc(collection(db, 'audit_logs'), {
-        actorId: user.uid,
-        actorName: userProfile?.name || 'Admin',
-        employeeId: employee.uid,
-        employeeName: employee.name,
-        action: 'pause',
-        details: `Paused attendance for ${employee.name}`,
-        timestamp: now
-      });
-
-      toast.success(`${employee.name} paused successfully`);
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to pause");
-    }
-  };
-
-  const handleResume = async (record: AttendanceRecord, employee: UserProfile) => {
-    if (!user) return;
-    try {
-      const now = Timestamp.now();
-      const pauses = [...(record.pauses || [])];
-      if (pauses.length > 0 && !pauses[pauses.length - 1].end) {
-        pauses[pauses.length - 1].end = now;
-      }
-
-      await updateDoc(doc(db, 'attendance', record.id), {
-        status: 'working',
-        pauses
-      });
-
-      // Audit Log
-      await addDoc(collection(db, 'audit_logs'), {
-        actorId: user.uid,
-        actorName: userProfile?.name || 'Admin',
-        employeeId: employee.uid,
-        employeeName: employee.name,
-        action: 'resume',
-        details: `Resumed attendance for ${employee.name}`,
-        timestamp: now
-      });
-
-      toast.success(`${employee.name} resumed successfully`);
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to resume");
-    }
-  };
-
-  const handleAutoCheckOutAll = async () => {
-    if (!isAdmin || !settings || !user) return;
-    
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const confirm = window.confirm(`This will automatically check out all employees who haven't checked out yet for today (${today}) at ${settings.autoCheckOutTime || '23:59'}. Proceed?`);
-    if (!confirm) return;
-
-    const [hours, minutes] = (settings.autoCheckOutTime || '23:59').split(':').map(Number);
-    const autoTime = new Date();
-    autoTime.setHours(hours, minutes, 0, 0);
-    const autoTimestamp = Timestamp.fromDate(autoTime);
-
-    let count = 0;
-    const todayRecords = records.filter(r => r.date === today);
-
-    for (const record of todayRecords) {
-      if (record.status === 'working' || record.status === 'paused') {
-        const pauses = [...(record.pauses || [])];
-        // Auto resume if paused
-        if (record.status === 'paused' && pauses.length > 0 && !pauses[pauses.length - 1].end) {
-          pauses[pauses.length - 1].end = autoTimestamp;
-        }
-
-        const workingMinutes = calculateWorkingMinutes(
-          record.checkIn.toDate(),
-          autoTime,
-          pauses
-        );
-
-        await updateDoc(doc(db, 'attendance', record.id), {
-          checkOut: autoTimestamp,
-          status: 'auto-completed',
-          pauses,
-          workingMinutes,
-          isAutoCompleted: true
-        });
-
-        // Audit Log
-        const emp = employees.find(e => e.uid === record.uid);
-        await addDoc(collection(db, 'audit_logs'), {
-          actorId: user.uid,
-          actorName: userProfile?.name || 'System/Admin',
-          employeeId: record.uid,
-          employeeName: emp?.name || 'Unknown',
-          action: 'auto-checkout',
-          details: `Auto check-out triggered for ${today}`,
-          timestamp: Timestamp.now()
-        });
-
-        count++;
-      }
-    }
-    toast.success(`Auto check-out completed for ${count} employees.`);
-  };
-
   const handleOverride = async () => {
     if (!selectedRecord || !user) return;
 
     setConfirmAction({
       title: "Change Status",
-      message: `Are you sure you want to change the employee status to '${t('status.' + overrideStatus)}'?`,
+      message: `Are you sure you want to change the employee status to '${formatStatus(overrideStatus)}'?`,
       onConfirm: async () => {
-        const now = Timestamp.now();
         const updates: any = {
           status: overrideStatus,
           manualOverride: true,
@@ -320,17 +262,7 @@ const AdminDashboard: React.FC = () => {
           updatedBy: user.uid
         };
 
-        // Audit Log
-        const emp = employees.find(e => e.uid === selectedRecord.uid);
-        await addDoc(collection(db, 'audit_logs'), {
-          actorId: user.uid,
-          actorName: userProfile?.name || 'Admin',
-          employeeId: selectedRecord.uid,
-          employeeName: emp?.name || 'Unknown',
-          action: 'override',
-          details: `Overrode status to ${overrideStatus}. Reason: ${overrideReason}`,
-          timestamp: now
-        });
+        const now = Timestamp.now();
 
         // Smart Transitions & Full Recalculation Logic
         if (overrideStatus === 'working') {
@@ -427,7 +359,7 @@ const AdminDashboard: React.FC = () => {
           r.date,
           r.checkIn ? formatTime12h(r.checkIn.toDate()) : '-',
           r.checkOut ? formatTime12h(r.checkOut.toDate()) : '-',
-          r.status,
+          formatStatus(r.status),
           minutes > 0 ? formatDuration(minutes) : '-',
           remOver.type === 'remaining' ? remOver.value : '-',
           remOver.type === 'overtime' ? remOver.value : '-'
@@ -531,23 +463,13 @@ const AdminDashboard: React.FC = () => {
               className="bg-gray-50 px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none"
             >
               <option value="all">{t('hr.filter_status')}</option>
-              <option value="completed">{t('status.completed')}</option>
-              <option value="incomplete">{t('status.incomplete')}</option>
-              <option value="overtime">{t('status.overtime')}</option>
-              <option value="working">{t('status.working')}</option>
-              <option value="absent">{t('status.absent')}</option>
-              <option value="leave">{t('status.leave')}</option>
+              <option value="completed">{formatStatus('completed')}</option>
+              <option value="incomplete">{formatStatus('incomplete')}</option>
+              <option value="overtime">{formatStatus('overtime')}</option>
+              <option value="working">{formatStatus('working')}</option>
+              <option value="absent">{formatStatus('absent')}</option>
+              <option value="leave">{formatStatus('leave')}</option>
             </select>
-
-            {isAdmin && (
-              <button
-                onClick={handleAutoCheckOutAll}
-                className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
-              >
-                <Clock className="w-4 h-4" />
-                <span>Auto Check-out</span>
-              </button>
-            )}
 
             <button
               onClick={exportToCSV}
@@ -614,14 +536,13 @@ const AdminDashboard: React.FC = () => {
                         <span className={cn(
                           "px-2 py-1 rounded-full text-xs font-medium w-fit",
                           record.status === 'completed' || record.status === 'overtime' ? "bg-green-100 text-green-700" :
-                          record.status === 'auto-completed' ? "bg-orange-100 text-orange-700 border border-orange-200" :
                           record.status === 'working' ? "bg-blue-100 text-blue-700" :
                           record.status === 'paused' ? "bg-yellow-100 text-yellow-700" :
                           record.status === 'incomplete' ? "bg-orange-100 text-orange-700" :
                           record.status === 'leave' ? "bg-purple-100 text-purple-700" :
                           "bg-red-100 text-red-700"
                         )}>
-                          {t('status.' + record.status)}
+                          {formatStatus(record.status)}
                         </span>
                         {record.status === 'leave' && record.checkIn && record.checkOut && (
                           <span className="text-[10px] text-purple-600 font-bold uppercase tracking-wider">
@@ -639,8 +560,8 @@ const AdminDashboard: React.FC = () => {
                       <div className="flex items-center gap-1">
                         {record.status === 'working' && (
                           <button
-                            onClick={() => handlePause(record, emp!)}
-                            className="p-2 text-gray-400 hover:text-orange-600 transition-colors"
+                            onClick={() => handlePause(record)}
+                            className="p-2 text-gray-400 hover:text-yellow-600 transition-colors"
                             title="Pause"
                           >
                             <Pause className="w-4 h-4" />
@@ -648,7 +569,7 @@ const AdminDashboard: React.FC = () => {
                         )}
                         {record.status === 'paused' && (
                           <button
-                            onClick={() => handleResume(record, emp!)}
+                            onClick={() => handleResume(record)}
                             className="p-2 text-gray-400 hover:text-green-600 transition-colors"
                             title="Resume"
                           >
@@ -697,13 +618,13 @@ const AdminDashboard: React.FC = () => {
                   onChange={(e) => setOverrideStatus(e.target.value as AttendanceStatus)}
                   className="w-full p-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="completed">Completed</option>
-                  <option value="incomplete">Incomplete</option>
-                  <option value="overtime">Overtime</option>
-                  <option value="working">Working</option>
-                  <option value="paused">Paused</option>
-                  <option value="absent">Absent</option>
-                  <option value="leave">Leave</option>
+                  <option value="completed">{formatStatus('completed')}</option>
+                  <option value="incomplete">{formatStatus('incomplete')}</option>
+                  <option value="overtime">{formatStatus('overtime')}</option>
+                  <option value="working">{formatStatus('working')}</option>
+                  <option value="paused">{formatStatus('paused')}</option>
+                  <option value="absent">{formatStatus('absent')}</option>
+                  <option value="leave">{formatStatus('leave')}</option>
                 </select>
               </div>
 

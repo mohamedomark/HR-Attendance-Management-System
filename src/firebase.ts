@@ -66,7 +66,10 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // Validate Connection to Firestore
 async function testConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    // Only test if we have a valid config
+    if (firebaseConfig.projectId && !firebaseConfig.projectId.includes('TODO')) {
+      await getDocFromServer(doc(db, 'test', 'connection'));
+    }
   } catch (error) {
     if(error instanceof Error && error.message.includes('the client is offline')) {
       console.error("Please check your Firebase configuration. ");
@@ -74,7 +77,7 @@ async function testConnection() {
     // Skip logging for other errors, as this is simply a connection test.
   }
 }
-testConnection();
+// testConnection(); // Disable top-level call to avoid early permission errors
 
 export { 
   collection, 

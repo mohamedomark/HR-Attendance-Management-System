@@ -4,8 +4,9 @@ import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence, br
 import { auth, db, doc, setDoc, Timestamp, getDocFromServer } from '../firebase';
 import { getDoc } from 'firebase/firestore';
 import { useLanguage } from '../contexts/LanguageContext';
-import { LogIn, Globe, AlertCircle } from 'lucide-react';
+import { Globe, AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { Logo } from '../components/Logo';
 
 const Login: React.FC = () => {
   const { t, language, setLanguage, isRtl } = useLanguage();
@@ -20,13 +21,16 @@ const Login: React.FC = () => {
   useEffect(() => {
     const checkInitialization = async () => {
       try {
-        console.log('Checking initialization status on (default) database...');
-        // Use getDocFromServer to bypass local cache and ensure we get latest rules
-        const statusDoc = await getDocFromServer(doc(db, 'settings', 'status'));
+        console.log('Checking initialization status on database:', db.app.options.projectId);
+        // Use getDoc to check status
+        const statusDoc = await getDoc(doc(db, 'settings', 'status'));
         console.log('Status doc exists:', statusDoc.exists());
         if (!statusDoc.exists()) {
           console.log('System is uninitialized. Showing setup.');
           setShowSetup(true);
+        } else {
+          console.log('System is initialized:', statusDoc.data());
+          setShowSetup(false);
         }
       } catch (err: any) {
         console.error('Error checking initialization:', err);
@@ -138,8 +142,8 @@ const Login: React.FC = () => {
     <div className={cn("min-h-screen flex items-center justify-center bg-gray-50 px-4", isRtl ? "font-arabic" : "font-sans")}>
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg">
         <div className="text-center">
-          <div className="mx-auto h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
-            <LogIn className="w-6 h-6" />
+          <div className="mx-auto flex items-center justify-center">
+            <Logo className="h-24 w-auto" />
           </div>
           <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
             {t('auth.login')}

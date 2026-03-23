@@ -30,11 +30,10 @@ service cloud.firestore {
     //   - updatedBy: string (optional)
     //
     // Collection: settings
-    // Document ID: system
+    // Document ID: global
     // Fields:
     //   - workStartTime: string (e.g., '09:00')
     //   - lateThresholdMinutes: number
-    //   - autoCheckOutTime: string (e.g., '23:59')
     //
     // ===============================================================
 
@@ -56,41 +55,27 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         (
-          (request.auth.token.email == "mohamedomar000187@gmail.com" && request.auth.token.email_verified == true) ||
+          (request.auth.token.email == "mohamedomar000187@gmail.com") ||
           (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'hr-admin')
         );
     }
 
-    function isManager() {
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager';
-    }
-
-    function isTeamMember(employeeUid) {
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/users/$(employeeUid)) &&
-        get(/databases/$(database)/documents/users/$(employeeUid)).data.managerId == request.auth.uid;
-    }
-
     function isValidUser(data) {
-      let allowedFields = ['uid', 'name', 'email', 'role', 'position', 'employeeId', 'managerId', 'isDeleted', 'createdAt'];
+      let allowedFields = ['uid', 'name', 'email', 'role', 'position', 'employeeId', 'createdAt'];
       return data.keys().hasOnly(allowedFields) &&
              data.keys().hasAll(['uid', 'name', 'email', 'role', 'createdAt']) &&
              data.uid is string &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
              isValidEmail(data.email) &&
-             data.role in ['employee', 'hr-admin', 'manager'] &&
+             data.role in ['employee', 'hr-admin'] &&
              (!('position' in data) || (data.position is string && data.position.size() <= 100)) &&
              (!('employeeId' in data) || (data.employeeId is string && data.employeeId.size() <= 50)) &&
-             (!('managerId' in data) || data.managerId is string) &&
-             (!('isDeleted' in data) || data.isDeleted is bool) &&
              data.createdAt is timestamp;
     }
 
     function isValidAttendance(data) {
-      let allowedFields = ['uid', 'date', 'checkIn', 'checkOut', 'status', 'workingHours', 'remainingHours', 'overtimeHours', 'manualOverride', 'overrideReason', 'updatedBy', 'pauses', 'isAutoCompleted', 'workingMinutes'];
-      let allowedStatuses = ['absent', 'working', 'completed', 'incomplete', 'overtime', 'leave', 'paused', 'auto-completed'];
+      let allowedFields = ['uid', 'date', 'checkIn', 'checkOut', 'status', 'workingHours', 'remainingHours', 'overtimeHours', 'manualOverride', 'overrideReason', 'updatedBy', 'pauses'];
+      let allowedStatuses = ['absent', 'working', 'completed', 'incomplete', 'overtime', 'leave', 'paused'];
       
       return data.keys().hasOnly(allowedFields) &&
              data.keys().hasAll(['uid', 'date', 'status']) &&
@@ -105,30 +90,29 @@ service cloud.firestore {
              (!('manualOverride' in data) || data.manualOverride is bool) &&
              (!('overrideReason' in data) || (data.overrideReason is string && data.overrideReason.size() <= 1000)) &&
              (!('updatedBy' in data) || data.updatedBy is string) &&
-             (!('pauses' in data) || data.pauses is list) &&
-             (!('isAutoCompleted' in data) || data.isAutoCompleted is bool) &&
-             (!('workingMinutes' in data) || data.workingMinutes is number);
-    }
-
-    function isValidSettings(data) {
-      let allowedFields = ['workStartTime', 'lateThresholdMinutes', 'autoCheckOutTime'];
-      return data.keys().hasOnly(allowedFields) &&
-             data.workStartTime is string && data.workStartTime.matches("^\\d{2}:\\d{2}$") &&
-             data.lateThresholdMinutes is number &&
-             (!('autoCheckOutTime' in data) || (data.autoCheckOutTime is string && data.autoCheckOutTime.matches("^\\d{2}:\\d{2}$")));
+             (!('pauses' in data) || data.pauses is list);
     }
 
     // ===============================================================
     // Rules
     // ===============================================================
 
-    match /settings/system {
+    match /test/connection {
+      allow get: if true;
+    }
+
+    match /settings/status {
+      allow get: if true;
+      allow read, write: if isAdmin();
+    }
+
+    match /settings/global {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() && isValidSettings(request.resource.data);
+      allow write: if isAdmin();
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin() || isManager();
+      allow read: if isOwner(userId) || isAdmin();
       allow create: if isAuthenticated() && (
         isOwner(userId) && (
           isValidUser(request.resource.data) && (
@@ -145,18 +129,13 @@ service cloud.firestore {
 
 
     match /attendance/{recordId} {
-      allow read: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin() || isTeamMember(resource.data.uid));
+      allow read: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && (request.resource.data.uid == request.auth.uid || isAdmin()) && isValidAttendance(request.resource.data);
-      allow update: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin() || isTeamMember(resource.data.uid)) && 
+      allow update: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin()) && 
                     isValidAttendance(request.resource.data) &&
                     request.resource.data.uid == resource.data.uid &&
                     request.resource.data.date == resource.data.date;
       allow delete: if isAdmin();
-    }
-
-    match /audit_logs/{logId} {
-      allow read: if isAdmin();
-      allow create: if isAuthenticated() && (isAdmin() || isManager());
     }
 
   }

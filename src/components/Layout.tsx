@@ -14,6 +14,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { cn } from '../lib/utils';
+import { Logo } from './Logo';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile, signOut, isAdmin } = useAuth();
@@ -52,11 +53,14 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         isRtl ? (isSidebarOpen ? "translate-x-0 right-0" : "translate-x-full right-0") : (isSidebarOpen ? "translate-x-0 left-0" : "-translate-x-full left-0")
       )}>
         <div className="h-full flex flex-col">
-          <div className="p-6 flex items-center justify-between">
-            <h1 className="text-xl font-bold text-blue-600">{t('app.title')}</h1>
-            <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
-              <X className="w-6 h-6" />
-            </button>
+          <div className="p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <Logo className="h-12 w-auto" />
+              <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <h1 className="text-sm font-bold text-gray-800 leading-tight">{t('app.title')}</h1>
           </div>
 
           <nav className="flex-1 px-4 space-y-1">
@@ -120,7 +124,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <button onClick={() => setIsSidebarOpen(true)}>
               <Menu className="w-6 h-6" />
             </button>
-            <h1 className="text-lg font-bold text-blue-600">{t('app.title')}</h1>
+            <Logo className="h-8 w-auto" />
             <div className="w-6" /> {/* Spacer */}
           </div>
         </header>

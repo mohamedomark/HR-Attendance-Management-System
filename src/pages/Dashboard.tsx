@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 
 const Dashboard: React.FC = () => {
   const { user, userProfile } = useAuth();
-  const { t, isRtl } = useLanguage();
+  const { t, formatStatus, isRtl } = useLanguage();
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [todayRecord, setTodayRecord] = useState<AttendanceRecord | null>(null);
   const [settings, setSettings] = useState<SystemSettings>({ workStartTime: '09:00', lateThresholdMinutes: 15 });
@@ -59,7 +59,7 @@ const Dashboard: React.FC = () => {
   }, [user, todayStr]);
 
   useEffect(() => {
-    const settingsRef = doc(db, 'settings', 'system');
+    const settingsRef = doc(db, 'settings', 'global');
     const unsubscribe = onSnapshot(settingsRef, (snapshot) => {
       if (snapshot.exists()) {
         setSettings(snapshot.data() as SystemSettings);
@@ -251,7 +251,7 @@ const Dashboard: React.FC = () => {
                       className="flex-1 py-3 px-4 rounded-lg font-medium bg-yellow-500 text-white hover:bg-yellow-600 transition-all flex items-center justify-center gap-2 shadow-md"
                     >
                       <Pause className="w-5 h-5" />
-                      {t('status.paused')}
+                      {formatStatus('paused')}
                     </button>
                   ) : todayRecord.status === 'paused' ? (
                     <button
@@ -278,7 +278,7 @@ const Dashboard: React.FC = () => {
                   todayRecord.status === 'leave' ? "bg-purple-100 text-purple-700" :
                   "bg-red-100 text-red-700"
                 )}>
-                  {t('status.' + todayRecord.status)}
+                  {formatStatus(todayRecord.status)}
                 </span>
                 {todayRecord.checkIn && (
                   <span>{t('emp.check_in')}: {formatTime12h(todayRecord.checkIn.toDate())}</span>
@@ -316,7 +316,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="p-4 bg-gray-50 rounded-lg">
               <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">{t('emp.status')}</p>
-              <p className="text-2xl font-bold text-gray-900">{todayRecord ? t('status.' + todayRecord.status) : '-'}</p>
+              <p className="text-2xl font-bold text-gray-900">{todayRecord ? formatStatus(todayRecord.status) : '-'}</p>
             </div>
             
             {todayRecord && (
@@ -390,14 +390,13 @@ const Dashboard: React.FC = () => {
                         <span className={cn(
                           "px-2 py-1 rounded-full text-xs font-medium w-fit",
                           record.status === 'completed' || record.status === 'overtime' ? "bg-green-100 text-green-700" : 
-                          record.status === 'auto-completed' ? "bg-orange-100 text-orange-700 border border-orange-200" :
                           record.status === 'working' ? "bg-blue-100 text-blue-700" :
                           record.status === 'paused' ? "bg-yellow-100 text-yellow-700" :
                           record.status === 'incomplete' ? "bg-orange-100 text-orange-700" :
                           record.status === 'leave' ? "bg-purple-100 text-purple-700" :
                           "bg-red-100 text-red-700"
                         )}>
-                          {t('status.' + record.status)}
+                          {formatStatus(record.status)}
                         </span>
                         {record.status === 'leave' && record.checkIn && record.checkOut && (
                           <span className="text-[10px] font-bold text-purple-600 uppercase tracking-tighter">

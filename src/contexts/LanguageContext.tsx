@@ -5,12 +5,13 @@ interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   t: (key: string) => string;
+  formatStatus: (status: string) => string;
   isRtl: boolean;
 }
 
 const translations: Record<Language, Record<string, string>> = {
   en: {
-    'app.title': 'Attendance Management',
+    'app.title': 'ABG Egypt Attendance Management',
     'nav.dashboard': 'Dashboard',
     'nav.employees': 'Employees',
     'nav.attendance': 'Attendance',
@@ -54,6 +55,8 @@ const translations: Record<Language, Record<string, string>> = {
     'status.incomplete': 'Incomplete',
     'status.overtime': 'Overtime',
     'status.leave': 'On Leave',
+    'status.paused': 'Paused',
+    'status.auto_completed': 'Auto Completed',
     'common.save': 'Save',
     'common.cancel': 'Cancel',
     'common.edit': 'Edit',
@@ -69,7 +72,7 @@ const translations: Record<Language, Record<string, string>> = {
     'common.override': 'Manual Override',
   },
   ar: {
-    'app.title': 'نظام إدارة الحضور',
+    'app.title': 'إدارة حضور وانصراف ABG Egypt',
     'nav.dashboard': 'لوحة التحكم',
     'nav.employees': 'الموظفين',
     'nav.attendance': 'الحضور',
@@ -113,6 +116,8 @@ const translations: Record<Language, Record<string, string>> = {
     'status.incomplete': 'غير مكتمل',
     'status.overtime': 'وقت إضافي',
     'status.leave': 'إجازة',
+    'status.paused': 'متوقف مؤقتاً',
+    'status.auto_completed': 'مكتمل تلقائياً',
     'common.save': 'حفظ',
     'common.cancel': 'إلغاء',
     'common.edit': 'تعديل',
@@ -146,10 +151,20 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return translations[language][key] || key;
   };
 
+  const formatStatus = (status: string | undefined | null) => {
+    if (!status) return language === 'ar' ? 'حالة غير معروفة' : 'Unknown Status';
+    const key = `status.${status}`;
+    const translated = translations[language][key];
+    if (translated) return translated;
+    
+    // Fallback for unknown status
+    return language === 'ar' ? 'حالة غير معروفة' : 'Unknown Status';
+  };
+
   const isRtl = language === 'ar';
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t, isRtl }}>
+    <LanguageContext.Provider value={{ language, setLanguage, t, formatStatus, isRtl }}>
       {children}
     </LanguageContext.Provider>
   );
