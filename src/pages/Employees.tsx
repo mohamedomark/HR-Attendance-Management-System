@@ -366,6 +366,12 @@ const Employees: React.FC = () => {
                     <option value="manager">Manager</option>
                     <option value="hr-admin">HR Admin</option>
                   </select>
+                  {(formData.position.toLowerCase() === 'po' || formData.position.toLowerCase() === 'product owner' || formData.position.toLowerCase() === 'product owner (po)') && (
+                    <p className="mt-1.5 text-xs text-blue-600 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      PO users will automatically have admin-level access
+                    </p>
+                  )}
                 </div>
 
                 {formData.role === 'employee' && (

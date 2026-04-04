@@ -21,6 +21,13 @@ export interface PauseRecord {
   end?: Timestamp;
 }
 
+export interface AttendanceSession {
+  id: string;
+  checkIn: Timestamp;
+  checkOut?: Timestamp;
+  pauses?: PauseRecord[];
+}
+
 export interface AttendanceRecord {
   id?: string;
   uid: string;
@@ -31,10 +38,13 @@ export interface AttendanceRecord {
   workingHours?: number;
   remainingHours?: number;
   overtimeHours?: number;
+  actualHours?: number;
+  actualNotes?: string;
   manualOverride?: boolean;
   overrideReason?: string;
   updatedBy?: string;
   pauses?: PauseRecord[];
+  sessions?: AttendanceSession[];
 }
 
 export interface SystemSettings {

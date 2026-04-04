@@ -53,11 +53,17 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
-        (
-          (request.auth.token.email == "mohamedomar000187@gmail.com") ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'hr-admin')
-        );
+      let isDefaultAdmin = isAuthenticated() && request.auth.token.email == "mohamedomar000187@gmail.com";
+      let userExists = isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      let userData = userExists ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data : null;
+      let isHrAdmin = userExists && userData.role == 'hr-admin';
+      let isProductOwner = userExists && ('position' in userData) && (userData.position is string) && (
+        userData.position.lower() == 'po' || 
+        userData.position.lower() == 'product owner' || 
+        userData.position.lower() == 'product owner (po)'
+      );
+      
+      return isDefaultAdmin || isHrAdmin || isProductOwner;
     }
 
     function isValidUser(data) {
@@ -74,8 +80,8 @@ service cloud.firestore {
     }
 
     function isValidAttendance(data) {
-      let allowedFields = ['uid', 'date', 'checkIn', 'checkOut', 'status', 'workingHours', 'remainingHours', 'overtimeHours', 'manualOverride', 'overrideReason', 'updatedBy', 'pauses'];
-      let allowedStatuses = ['absent', 'working', 'completed', 'incomplete', 'overtime', 'leave', 'paused'];
+      let allowedFields = ['uid', 'date', 'checkIn', 'checkOut', 'status', 'workingHours', 'remainingHours', 'overtimeHours', 'manualOverride', 'overrideReason', 'updatedBy', 'pauses', 'actualHours', 'actualNotes', 'sessions'];
+      let allowedStatuses = ['absent', 'working', 'completed', 'incomplete', 'overtime', 'leave', 'paused', 'auto-completed'];
       
       return data.keys().hasOnly(allowedFields) &&
              data.keys().hasAll(['uid', 'date', 'status']) &&
@@ -90,7 +96,10 @@ service cloud.firestore {
              (!('manualOverride' in data) || data.manualOverride is bool) &&
              (!('overrideReason' in data) || (data.overrideReason is string && data.overrideReason.size() <= 1000)) &&
              (!('updatedBy' in data) || data.updatedBy is string) &&
-             (!('pauses' in data) || data.pauses is list);
+             (!('pauses' in data) || data.pauses is list) &&
+             (!('sessions' in data) || data.sessions is list) &&
+             (!('actualHours' in data) || (data.actualHours is number && data.actualHours >= 0)) &&
+             (!('actualNotes' in data) || (data.actualNotes is string && data.actualNotes.size() <= 1000));
     }
 
     // ===============================================================

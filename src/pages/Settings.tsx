@@ -10,7 +10,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { SystemSettings } from '../types';
-import { Settings as SettingsIcon, Clock, ShieldCheck, Save } from 'lucide-react';
+import { Settings as SettingsIcon, Clock, ShieldCheck, Save, AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const Settings: React.FC = () => {
@@ -24,12 +24,27 @@ const Settings: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      setLoading(false);
+      return;
+    }
 
-    const settingsRef = doc(db, 'settings', 'system');
+    let isMounted = true;
+    let timeoutId: NodeJS.Timeout;
+
+    const settingsRef = doc(db, 'settings', 'global');
+    
+    console.log('Fetching settings from Firestore...');
+    
     const unsubscribe = onSnapshot(settingsRef, (snapshot) => {
+      if (!isMounted) return;
+      
+      clearTimeout(timeoutId);
+      console.log('Settings fetched successfully:', snapshot.data());
+      
       if (snapshot.exists()) {
         const data = snapshot.data() as SystemSettings;
         setSettings({
@@ -37,14 +52,34 @@ const Settings: React.FC = () => {
           lateThresholdMinutes: data.lateThresholdMinutes || 15,
           autoCheckOutTime: data.autoCheckOutTime || '23:59'
         });
+      } else {
+        console.log('Settings document does not exist, using defaults.');
       }
       setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'settings/system');
+      setError(null);
+    }, (err) => {
+      if (!isMounted) return;
+      clearTimeout(timeoutId);
+      console.error('Error fetching settings:', err);
+      setError('Failed to load settings. Please try again.');
+      handleFirestoreError(err, OperationType.GET, 'settings/global');
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    // 5-second timeout fallback
+    timeoutId = setTimeout(() => {
+      if (isMounted && loading) {
+        console.warn('Settings fetch timed out after 5 seconds. Using fallback defaults.');
+        setError('Connection timed out. Using default settings.');
+        setLoading(false);
+      }
+    }, 5000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+      unsubscribe();
+    };
   }, [isAdmin]);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -53,11 +88,11 @@ const Settings: React.FC = () => {
     setSuccess(false);
 
     try {
-      await setDoc(doc(db, 'settings', 'system'), settings);
+      await setDoc(doc(db, 'settings', 'global'), settings);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'settings/system');
+      handleFirestoreError(error, OperationType.WRITE, 'settings/global');
     } finally {
       setSaving(false);
     }
@@ -76,6 +111,13 @@ const Settings: React.FC = () => {
           <p className="text-sm text-gray-500">Configure system-wide attendance rules</p>
         </div>
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <p>{error}</p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">

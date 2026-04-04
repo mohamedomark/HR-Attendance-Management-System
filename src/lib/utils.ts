@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { format, differenceInMinutes } from 'date-fns';
-import { AttendanceStatus, PauseRecord } from '../types';
+import { AttendanceStatus, PauseRecord, AttendanceRecord } from '../types';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -41,14 +41,37 @@ export function calculateWorkingMinutes(checkIn: Date, checkOut: Date, pauses?: 
   return Math.max(0, Math.round(workedMs / (1000 * 60)));
 }
 
-export function getAttendanceStatus(checkIn?: Date, checkOut?: Date, isOnLeave?: boolean, isPaused?: boolean, pauses?: PauseRecord[], isAutoCompleted?: boolean): AttendanceStatus {
+export function calculateTotalWorkingMinutes(record: AttendanceRecord, currentTime: Date = new Date()): number {
+  let totalMinutes = 0;
+
+  if (record.sessions && record.sessions.length > 0) {
+    record.sessions.forEach(session => {
+      const checkOutTime = session.checkOut ? session.checkOut.toDate() : currentTime;
+      totalMinutes += calculateWorkingMinutes(session.checkIn.toDate(), checkOutTime, session.pauses);
+    });
+  } else if (record.checkIn) {
+    const checkOutTime = record.checkOut ? record.checkOut.toDate() : currentTime;
+    totalMinutes += calculateWorkingMinutes(record.checkIn.toDate(), checkOutTime, record.pauses);
+  } else if (record.workingHours) {
+    return record.workingHours;
+  }
+
+  return totalMinutes;
+}
+
+export function getAttendanceStatus(record: AttendanceRecord, isOnLeave?: boolean, isPaused?: boolean, isAutoCompleted?: boolean): AttendanceStatus {
   if (isOnLeave) return 'leave';
   if (isAutoCompleted) return 'auto-completed';
   if (isPaused) return 'paused';
-  if (!checkIn) return 'absent';
-  if (!checkOut) return 'working';
+  
+  const hasActiveSession = record.sessions && record.sessions.length > 0 
+    ? !record.sessions[record.sessions.length - 1].checkOut 
+    : record.checkIn && !record.checkOut;
 
-  const minutes = calculateWorkingMinutes(checkIn, checkOut, pauses);
+  if (!record.checkIn && (!record.sessions || record.sessions.length === 0)) return 'absent';
+  if (hasActiveSession) return 'working';
+
+  const minutes = calculateTotalWorkingMinutes(record);
   const requiredMinutes = 8 * 60;
 
   if (minutes > requiredMinutes) return 'overtime';
@@ -56,13 +79,12 @@ export function getAttendanceStatus(checkIn?: Date, checkOut?: Date, isOnLeave?:
   return 'incomplete';
 }
 
-export function getRemainingOrOvertime(minutes: number): { type: 'remaining' | 'overtime' | 'none', value: string } {
-  const requiredMinutes = 8 * 60;
-  if (minutes === requiredMinutes) return { type: 'none', value: '-' };
+export function getRemainingOrOvertime(minutes: number, baselineMinutes: number = 8 * 60): { type: 'remaining' | 'overtime' | 'none', value: string } {
+  if (minutes === baselineMinutes) return { type: 'none', value: '-' };
   
-  if (minutes < requiredMinutes) {
-    return { type: 'remaining', value: formatDuration(requiredMinutes - minutes) };
+  if (minutes < baselineMinutes) {
+    return { type: 'remaining', value: formatDuration(baselineMinutes - minutes) };
   }
   
-  return { type: 'overtime', value: formatDuration(minutes - requiredMinutes) };
+  return { type: 'overtime', value: formatDuration(minutes - baselineMinutes) };
 }

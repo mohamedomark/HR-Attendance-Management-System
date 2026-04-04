@@ -34,14 +34,20 @@ import {
   History,
   Pause,
   Play,
-  RotateCcw
+  RotateCcw,
+  AlertTriangle
 } from 'lucide-react';
-import { cn, formatTime12h, formatDuration, getRemainingOrOvertime, calculateWorkingMinutes } from '../lib/utils';
+import { cn, formatTime12h, formatDuration, getRemainingOrOvertime, calculateWorkingMinutes, calculateTotalWorkingMinutes } from '../lib/utils';
 import { toast } from 'sonner';
 
 const AdminDashboard: React.FC = () => {
   const { user, isAdmin } = useAuth();
   const { t, formatStatus, isRtl } = useLanguage();
+  
+  const checkIsPO = (position?: string) => {
+    const lowerPos = position?.toLowerCase();
+    return lowerPos === 'po' || lowerPos === 'product owner' || lowerPos === 'product owner (po)';
+  };
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +63,8 @@ const AdminDashboard: React.FC = () => {
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
   const [overrideStatus, setOverrideStatus] = useState<AttendanceStatus>('present');
   const [overrideReason, setOverrideReason] = useState('');
+  const [actualHoursInput, setActualHoursInput] = useState('');
+  const [actualNotesInput, setActualNotesInput] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // Confirmation Modal
@@ -123,36 +131,41 @@ const AdminDashboard: React.FC = () => {
   }, [records, employees, searchTerm, statusFilter, dateFilter, monthFilter]);
 
   const monthlyStats = useMemo(() => {
-    if (dateFilter) return null;
-    
-    let totalWorkedMinutes = 0;
+    let totalAttendanceMinutes = 0;
+    let totalActualMinutes = 0;
     let totalOvertimeMinutes = 0;
     let totalMissingMinutes = 0;
-    let absentCount = 0;
     
     filteredRecords.forEach(r => {
-      const minutes = r.checkIn 
-        ? calculateWorkingMinutes(r.checkIn.toDate(), r.checkOut ? r.checkOut.toDate() : currentTime, r.pauses)
-        : r.workingHours || 0;
+      const emp = employees.find(e => e.uid === r.uid);
+      const isPO = checkIsPO(emp?.position);
+      
+      const attendanceMinutes = calculateTotalWorkingMinutes(r, currentTime);
+        
+      let actualMinutes = attendanceMinutes;
 
-      if (minutes > 0) {
-        totalWorkedMinutes += minutes;
-        if (minutes > 8 * 60) {
-          totalOvertimeMinutes += (minutes - 8 * 60);
-        } else if (minutes < 8 * 60) {
-          totalMissingMinutes += (8 * 60 - minutes);
-        }
+      if (isPO && r.actualHours !== undefined) {
+        actualMinutes = Math.round(r.actualHours * 60);
       }
-      if (r.status === 'absent') absentCount++;
+
+      totalAttendanceMinutes += attendanceMinutes;
+      totalActualMinutes += actualMinutes;
+      
+      const expectedMinutes = 8 * 60;
+      
+      if (actualMinutes > expectedMinutes) {
+        totalOvertimeMinutes += (actualMinutes - expectedMinutes);
+      } else if (actualMinutes < expectedMinutes) {
+        totalMissingMinutes += (expectedMinutes - actualMinutes);
+      }
     });
     
     return {
-      totalWorked: formatDuration(totalWorkedMinutes),
+      totalWorked: formatDuration(totalActualMinutes),
       totalOvertime: formatDuration(totalOvertimeMinutes),
-      totalMissing: formatDuration(totalMissingMinutes),
-      absentCount
+      totalMissing: formatDuration(totalMissingMinutes)
     };
-  }, [filteredRecords, dateFilter, currentTime]);
+  }, [filteredRecords, currentTime]);
 
   const handlePause = (record: AttendanceRecord) => {
     // Validation
@@ -176,13 +189,26 @@ const AdminDashboard: React.FC = () => {
         if (!user) return;
         
         const now = Timestamp.now();
-        const pauses = [...(record.pauses || [])];
-        pauses.push({ start: now });
         
         try {
+          let updatedSessions = record.sessions ? [...record.sessions] : [];
+          
+          if (updatedSessions.length > 0) {
+            const lastSession = updatedSessions[updatedSessions.length - 1];
+            lastSession.pauses = [...(lastSession.pauses || []), { start: now }];
+          } else if (record.checkIn) {
+            const legacySession: any = {
+              id: 'legacy-session',
+              checkIn: record.checkIn,
+              pauses: [...(record.pauses || []), { start: now }]
+            };
+            if (record.checkOut) legacySession.checkOut = record.checkOut;
+            updatedSessions = [legacySession];
+          }
+
           await updateDoc(doc(db, 'attendance', record.id!), {
-            status: 'paused',
-            pauses
+            sessions: updatedSessions,
+            status: 'paused'
           });
           toast.success("Employee paused successfully.");
         } catch (error) {
@@ -208,16 +234,35 @@ const AdminDashboard: React.FC = () => {
         if (!user) return;
         
         const now = Timestamp.now();
-        const pauses = [...(record.pauses || [])];
-        const lastPause = pauses[pauses.length - 1];
-        if (lastPause && !lastPause.end) {
-          lastPause.end = now;
-        }
         
         try {
+          let updatedSessions = record.sessions ? [...record.sessions] : [];
+          
+          if (updatedSessions.length > 0) {
+            const lastSession = updatedSessions[updatedSessions.length - 1];
+            if (lastSession.pauses && lastSession.pauses.length > 0) {
+              const lastPause = lastSession.pauses[lastSession.pauses.length - 1];
+              if (!lastPause.end) {
+                lastPause.end = now;
+              }
+            }
+          } else if (record.checkIn) {
+            const legacySession: any = {
+              id: 'legacy-session',
+              checkIn: record.checkIn,
+              pauses: [...(record.pauses || [])]
+            };
+            if (record.checkOut) legacySession.checkOut = record.checkOut;
+            updatedSessions = [legacySession];
+            const lastPause = updatedSessions[0].pauses![updatedSessions[0].pauses!.length - 1];
+            if (lastPause && !lastPause.end) {
+              lastPause.end = now;
+            }
+          }
+          
           await updateDoc(doc(db, 'attendance', record.id!), {
-            status: 'working',
-            pauses
+            sessions: updatedSessions,
+            status: 'working'
           });
           toast.success("Employee resumed successfully.");
         } catch (error) {
@@ -265,69 +310,109 @@ const AdminDashboard: React.FC = () => {
         const now = Timestamp.now();
 
         // Smart Transitions & Full Recalculation Logic
+        let updatedSessions = selectedRecord.sessions ? [...selectedRecord.sessions] : [];
+        if (updatedSessions.length === 0 && selectedRecord.checkIn) {
+          const legacySession: any = {
+            id: 'legacy-session',
+            checkIn: selectedRecord.checkIn
+          };
+          if (selectedRecord.checkOut) legacySession.checkOut = selectedRecord.checkOut;
+          if (selectedRecord.pauses) legacySession.pauses = selectedRecord.pauses;
+          updatedSessions = [legacySession];
+        }
+
         if (overrideStatus === 'working') {
-          if (!selectedRecord.checkIn) {
-            updates.checkIn = now;
-          }
-          // If resuming from pause
-          if (selectedRecord.status === 'paused') {
-            const pauses = [...(selectedRecord.pauses || [])];
-            const lastPause = pauses[pauses.length - 1];
-            if (lastPause && !lastPause.end) {
-              lastPause.end = now;
-              updates.pauses = pauses;
+          if (updatedSessions.length === 0) {
+            updatedSessions.push({ id: Date.now().toString(), checkIn: now });
+          } else {
+            const lastSession = updatedSessions[updatedSessions.length - 1];
+            if (lastSession.checkOut) {
+              delete lastSession.checkOut;
+            }
+            if (selectedRecord.status === 'paused' && lastSession.pauses && lastSession.pauses.length > 0) {
+              const lastPause = lastSession.pauses[lastSession.pauses.length - 1];
+              if (!lastPause.end) {
+                lastPause.end = now;
+              }
             }
           }
-          // Ensure checkOut is cleared if moving back to working
-          updates.checkOut = deleteField();
+          updates.sessions = updatedSessions;
           updates.workingHours = deleteField();
           updates.remainingHours = deleteField();
           updates.overtimeHours = deleteField();
         } 
         else if (overrideStatus === 'paused') {
-          if (!selectedRecord.checkIn) {
-            updates.checkIn = now; // Can't pause without check-in, so create one
+          if (updatedSessions.length === 0) {
+            updatedSessions.push({ id: Date.now().toString(), checkIn: now, pauses: [{ start: now }] });
+          } else if (selectedRecord.status === 'working') {
+            const lastSession = updatedSessions[updatedSessions.length - 1];
+            lastSession.pauses = [...(lastSession.pauses || []), { start: now }];
           }
-          if (selectedRecord.status === 'working') {
-            const pauses = [...(selectedRecord.pauses || [])];
-            pauses.push({ start: now });
-            updates.pauses = pauses;
-          }
+          updates.sessions = updatedSessions;
         }
         else if (overrideStatus === 'completed' || overrideStatus === 'overtime' || overrideStatus === 'incomplete') {
-          if (!selectedRecord.checkIn) {
-            updates.checkIn = now; // Simulate full session if missing
+          if (updatedSessions.length === 0) {
+            updatedSessions.push({ id: Date.now().toString(), checkIn: now, checkOut: now });
+          } else {
+            const lastSession = updatedSessions[updatedSessions.length - 1];
+            if (!lastSession.checkOut) {
+              lastSession.checkOut = now;
+            }
           }
-          if (!selectedRecord.checkOut) {
-            updates.checkOut = now;
-          }
+          updates.sessions = updatedSessions;
           
           // Calculate working hours for the final state
-          const checkIn = updates.checkIn || selectedRecord.checkIn;
-          const checkOut = updates.checkOut || selectedRecord.checkOut;
-          const pauses = updates.pauses || selectedRecord.pauses;
+          const tempRecord = { ...selectedRecord, sessions: updatedSessions };
+          const minutes = calculateTotalWorkingMinutes(tempRecord, now.toDate());
+          updates.workingHours = minutes;
           
-          if (checkIn && checkOut) {
-            const minutes = calculateWorkingMinutes(checkIn.toDate(), checkOut.toDate(), pauses);
-            updates.workingHours = minutes;
-            
-            const requiredMinutes = 8 * 60;
-            if (minutes > requiredMinutes) {
-              updates.overtimeHours = minutes - requiredMinutes;
-              updates.remainingHours = 0;
-            } else {
-              updates.remainingHours = requiredMinutes - minutes;
-              updates.overtimeHours = 0;
+          let calcMinutes = minutes;
+          const emp = employees.find(e => e.uid === selectedRecord.uid);
+          if (checkIsPO(emp?.position)) {
+            const actualHoursNum = parseFloat(actualHoursInput);
+            if (!isNaN(actualHoursNum) && actualHoursNum >= 0) {
+              calcMinutes = Math.round(actualHoursNum * 60);
+              updates.actualHours = actualHoursNum;
+              updates.actualNotes = actualNotesInput;
             }
+          }
+          
+          const requiredMinutes = 8 * 60;
+          if (calcMinutes > requiredMinutes) {
+            updates.overtimeHours = calcMinutes - requiredMinutes;
+            updates.remainingHours = 0;
+          } else {
+            updates.remainingHours = requiredMinutes - calcMinutes;
+            updates.overtimeHours = 0;
           }
         }
         else if (overrideStatus === 'absent') {
+          updates.sessions = deleteField();
           updates.checkIn = deleteField();
           updates.checkOut = deleteField();
+          updates.pauses = deleteField();
           updates.workingHours = 0;
           updates.remainingHours = 0;
           updates.overtimeHours = 0;
-          updates.pauses = deleteField();
+        }
+
+        const emp = employees.find(e => e.uid === selectedRecord.uid);
+        if (checkIsPO(emp?.position) && overrideStatus !== 'completed' && overrideStatus !== 'overtime' && overrideStatus !== 'incomplete') {
+          const actualHoursNum = parseFloat(actualHoursInput);
+          if (!isNaN(actualHoursNum) && actualHoursNum >= 0) {
+            updates.actualHours = actualHoursNum;
+            updates.actualNotes = actualNotesInput;
+            
+            const calcMinutes = Math.round(actualHoursNum * 60);
+            const requiredMinutes = 8 * 60;
+            if (calcMinutes > requiredMinutes) {
+              updates.overtimeHours = calcMinutes - requiredMinutes;
+              updates.remainingHours = 0;
+            } else {
+              updates.remainingHours = requiredMinutes - calcMinutes;
+              updates.overtimeHours = 0;
+            }
+          }
         }
 
         try {
@@ -346,23 +431,46 @@ const AdminDashboard: React.FC = () => {
   };
 
   const exportToCSV = () => {
-    const headers = ['Employee', 'ID', 'Date', 'Check In', 'Check Out', 'Status', 'Hours'];
+    const headers = ['Employee', 'ID', 'Date', 'Sessions', 'Status', 'Hours', 'Actual Hours', 'Actual Notes', 'Remaining', 'Overtime'];
     const rows = filteredRecords.map(r => {
         const emp = employees.find(e => e.uid === r.uid);
-        const minutes = r.checkIn 
-          ? calculateWorkingMinutes(r.checkIn.toDate(), r.checkOut ? r.checkOut.toDate() : currentTime, r.pauses)
-          : r.workingHours || 0;
-        const remOver = minutes > 0 ? getRemainingOrOvertime(minutes) : { type: 'none', value: '-' };
+        const isPO = checkIsPO(emp?.position);
+        const attendanceMinutes = calculateTotalWorkingMinutes(r, currentTime);
+        let minutes = attendanceMinutes;
+          
+        if (isPO && r.actualHours !== undefined) {
+          minutes = Math.round(r.actualHours * 60);
+        }
+        
+        const baseline = 8 * 60;
+        const remOver = getRemainingOrOvertime(minutes, baseline);
+        
+        let sessionsStr = '-';
+        let sessionsToDisplay = r.sessions || [];
+        if (sessionsToDisplay.length === 0 && r.checkIn) {
+          sessionsToDisplay = [{
+            id: 'legacy',
+            checkIn: r.checkIn,
+            checkOut: r.checkOut,
+            pauses: r.pauses
+          }];
+        }
+        
+        if (sessionsToDisplay.length > 0) {
+          sessionsStr = `"${sessionsToDisplay.map(s => `${formatTime12h(s.checkIn.toDate())} - ${s.checkOut ? formatTime12h(s.checkOut.toDate()) : 'Active'}`).join(', ')}"`;
+        }
+        
         return [
           emp?.name || 'Unknown',
           emp?.employeeId || '-',
           r.date,
-          r.checkIn ? formatTime12h(r.checkIn.toDate()) : '-',
-          r.checkOut ? formatTime12h(r.checkOut.toDate()) : '-',
+          sessionsStr,
           formatStatus(r.status),
-          minutes > 0 ? formatDuration(minutes) : '-',
-          remOver.type === 'remaining' ? remOver.value : '-',
-          remOver.type === 'overtime' ? remOver.value : '-'
+          attendanceMinutes > 0 ? formatDuration(attendanceMinutes) : '0h 0m',
+          r.actualHours !== undefined ? `${r.actualHours}h` : '-',
+          r.actualNotes ? `"${r.actualNotes.replace(/"/g, '""')}"` : '-',
+          remOver.type === 'remaining' ? remOver.value : '0h 0m',
+          remOver.type === 'overtime' ? remOver.value : '0h 0m'
         ];
       });
   
@@ -388,14 +496,16 @@ const AdminDashboard: React.FC = () => {
         <StatCard title={t('hr.absent_today')} value={stats.absent} icon={XCircle} color="red" />
       </div>
 
-      {/* Monthly Summary (Only when viewing by month) */}
-      {monthlyStats && !dateFilter && (
+      {/* Summary */}
+      {monthlyStats && (
         <div className="bg-blue-600 rounded-xl p-6 text-white shadow-lg">
           <div className="flex items-center gap-2 mb-4">
             <History className="w-5 h-5" />
-            <h3 className="text-lg font-bold">Monthly Summary: {format(new Date(monthFilter + '-01'), 'MMMM yyyy')}</h3>
+            <h3 className="text-lg font-bold">
+              {dateFilter ? `Summary: ${format(new Date(dateFilter), 'MMMM d, yyyy')}` : `Monthly Summary: ${format(new Date(monthFilter + '-01'), 'MMMM yyyy')}`}
+            </h3>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-1">
               <p className="text-blue-100 text-xs uppercase font-bold tracking-wider">Total Worked</p>
               <p className="text-2xl font-bold">{monthlyStats.totalWorked}</p>
@@ -407,10 +517,6 @@ const AdminDashboard: React.FC = () => {
             <div className="space-y-1">
               <p className="text-blue-100 text-xs uppercase font-bold tracking-wider">Total Missing</p>
               <p className="text-2xl font-bold">{monthlyStats.totalMissing}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-blue-100 text-xs uppercase font-bold tracking-wider">Absent Days</p>
-              <p className="text-2xl font-bold">{monthlyStats.absentCount}</p>
             </div>
           </div>
         </div>
@@ -493,6 +599,7 @@ const AdminDashboard: React.FC = () => {
                 <th className="px-6 py-4">{t('emp.check_in')}</th>
                 <th className="px-6 py-4">{t('emp.check_out')}</th>
                 <th className="px-6 py-4">{t('emp.hours')}</th>
+                <th className="px-6 py-4">Actual Hours</th>
                 <th className="px-6 py-4">{t('emp.remaining')}</th>
                 <th className="px-6 py-4">{t('emp.overtime')}</th>
                 <th className="px-6 py-4">{t('emp.status')}</th>
@@ -502,36 +609,113 @@ const AdminDashboard: React.FC = () => {
             <tbody className="divide-y divide-gray-100">
               {filteredRecords.map((record) => {
                 const emp = employees.find(e => e.uid === record.uid);
-                const minutes = record.checkIn 
-                  ? calculateWorkingMinutes(record.checkIn.toDate(), record.checkOut ? record.checkOut.toDate() : currentTime, record.pauses)
-                  : record.workingHours || 0;
-                const remOver = minutes > 0 ? getRemainingOrOvertime(minutes) : { type: 'none', value: '-' };
+                const isPO = checkIsPO(emp?.position);
+                const attendanceMinutes = calculateTotalWorkingMinutes(record, currentTime);
+                const attendanceHours = attendanceMinutes / 60;
+                let minutes = attendanceMinutes;
+                  
+                if (isPO && record.actualHours !== undefined) {
+                  minutes = Math.round(record.actualHours * 60);
+                }
+                
+                const baseline = 8 * 60;
+                const remOver = getRemainingOrOvertime(minutes, baseline);
+                
+                let sessionsToDisplay = record.sessions || [];
+                if (sessionsToDisplay.length === 0 && record.checkIn) {
+                  sessionsToDisplay = [{
+                    id: 'legacy',
+                    checkIn: record.checkIn,
+                    checkOut: record.checkOut,
+                    pauses: record.pauses
+                  }];
+                }
                 
                 return (
                   <tr key={record.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 align-top">
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-gray-900">{emp?.name || 'Unknown'}</span>
                         <span className="text-xs text-gray-500">{emp?.employeeId || '-'}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{record.date}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {record.checkIn ? formatTime12h(record.checkIn.toDate()) : '-'}
+                    <td className="px-6 py-4 text-sm text-gray-600 align-top">{record.date}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 align-top">
+                      {sessionsToDisplay.length > 0 ? (
+                        <div className="flex flex-col gap-2">
+                          {sessionsToDisplay.map((session, idx) => (
+                            <div key={session.id} className="flex items-center gap-2">
+                              {sessionsToDisplay.length > 1 && <span className="text-xs font-medium text-gray-400 w-4">{idx + 1}.</span>}
+                              <span>{formatTime12h(session.checkIn.toDate())}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : '-'}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {record.checkOut ? formatTime12h(record.checkOut.toDate()) : '-'}
+                    <td className="px-6 py-4 text-sm text-gray-600 align-top">
+                      {sessionsToDisplay.length > 0 ? (
+                        <div className="flex flex-col gap-2">
+                          {sessionsToDisplay.map((session, idx) => (
+                            <div key={session.id} className="flex items-center gap-2">
+                              {sessionsToDisplay.length > 1 && <span className="text-xs font-medium text-gray-400 w-4">{idx + 1}.</span>}
+                              <span>{session.checkOut ? formatTime12h(session.checkOut.toDate()) : 'Active'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : '-'}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {minutes > 0 ? formatDuration(minutes) : '-'}
+                    <td className="px-6 py-4 text-sm text-gray-600 align-top">
+                      <div className="flex flex-col gap-2">
+                        {sessionsToDisplay.length > 1 && sessionsToDisplay.map((session, idx) => (
+                          <div key={session.id} className="flex items-center gap-2 text-xs text-gray-500">
+                            <span className="w-4">{idx + 1}.</span>
+                            <span>{formatDuration(calculateWorkingMinutes(session.checkIn.toDate(), session.checkOut ? session.checkOut.toDate() : currentTime, session.pauses))}</span>
+                          </div>
+                        ))}
+                        <div className={cn("font-medium", sessionsToDisplay.length > 1 ? "mt-2 pt-2 border-t border-gray-100 text-gray-900" : "")}>
+                          {attendanceMinutes > 0 ? formatDuration(attendanceMinutes) : '0h 0m'}
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-orange-600 font-medium">
-                      {remOver.type === 'remaining' ? remOver.value : '-'}
+                    <td className="px-6 py-4 text-sm text-gray-600 align-top">
+                      {checkIsPO(emp?.position) ? (
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-1">
+                            <span className={cn(
+                              record.actualHours !== undefined
+                                ? record.actualHours < attendanceHours
+                                  ? "text-orange-600 font-medium"
+                                  : record.actualHours > attendanceHours
+                                    ? "text-blue-600 font-medium"
+                                    : "text-green-600 font-medium"
+                                : ""
+                            )}>
+                              {record.actualHours !== undefined ? `${record.actualHours}h` : '-'}
+                            </span>
+                            {record.actualHours !== undefined && record.actualHours < attendanceHours && (
+                              <AlertTriangle className="w-4 h-4 text-orange-500" title="Actual hours less than attendance hours" />
+                            )}
+                            {record.actualHours !== undefined && record.actualHours > attendanceHours && (
+                              <span className="px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold uppercase tracking-wider" title="Over-performance">Over</span>
+                            )}
+                          </div>
+                          {record.actualNotes && (
+                            <span className="text-xs text-gray-400 truncate max-w-[100px]" title={record.actualNotes}>
+                              {record.actualNotes}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
                     </td>
-                    <td className="px-6 py-4 text-sm text-green-600 font-medium">
-                      {remOver.type === 'overtime' ? remOver.value : '-'}
+                    <td className="px-6 py-4 text-sm text-orange-600 font-medium align-top">
+                      {remOver.type === 'remaining' ? remOver.value : '0h 0m'}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 text-sm text-green-600 font-medium align-top">
+                      {remOver.type === 'overtime' ? remOver.value : '0h 0m'}
+                    </td>
+                    <td className="px-6 py-4 align-top">
                       <div className="flex flex-col gap-1">
                         <span className={cn(
                           "px-2 py-1 rounded-full text-xs font-medium w-fit",
@@ -556,7 +740,7 @@ const AdminDashboard: React.FC = () => {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 align-top">
                       <div className="flex items-center gap-1">
                         {record.status === 'working' && (
                           <button
@@ -587,6 +771,9 @@ const AdminDashboard: React.FC = () => {
                           onClick={() => {
                             setSelectedRecord(record);
                             setOverrideStatus(record.status);
+                            setOverrideReason(record.overrideReason || '');
+                            setActualHoursInput(record.actualHours?.toString() || '');
+                            setActualNotesInput(record.actualNotes || '');
                             setIsOverrideModalOpen(true);
                           }}
                           className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
@@ -637,6 +824,32 @@ const AdminDashboard: React.FC = () => {
                   placeholder="Reason for manual override..."
                 />
               </div>
+
+              {selectedRecord && checkIsPO(employees.find(e => e.uid === selectedRecord.uid)?.position) && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Actual Hours</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={actualHoursInput}
+                      onChange={(e) => setActualHoursInput(e.target.value)}
+                      className="w-full p-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g. 7.5"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Actual Notes</label>
+                    <textarea
+                      value={actualNotesInput}
+                      onChange={(e) => setActualNotesInput(e.target.value)}
+                      className="w-full p-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 h-16 resize-none"
+                      placeholder="Notes regarding actual hours..."
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex gap-3">

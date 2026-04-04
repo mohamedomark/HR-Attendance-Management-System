@@ -28,7 +28,10 @@
         "workingHours": { "type": "number", "description": "The total working hours for the day." },
         "manualOverride": { "type": "boolean", "description": "Whether the record was manually updated by HR." },
         "overrideReason": { "type": "string", "description": "The reason for the manual override." },
-        "updatedBy": { "type": "string", "description": "The ID of the HR admin who performed the override." }
+        "updatedBy": { "type": "string", "description": "The ID of the HR admin who performed the override." },
+        "pauses": { "type": "array", "description": "List of pause periods during the work day." },
+        "actualHours": { "type": "number", "description": "Manually entered actual hours worked by POs." },
+        "actualNotes": { "type": "string", "description": "Optional notes for actual hours entered by POs." }
       },
       "required": ["uid", "date", "status"]
     },

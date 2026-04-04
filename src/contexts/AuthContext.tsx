@@ -22,6 +22,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   isAdmin: boolean;
   isManager: boolean;
+  isPO: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -68,11 +69,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await firebaseSignOut(auth);
   };
 
-  const isAdmin = userProfile?.role === 'hr-admin';
+  const isPO = userProfile?.position?.toLowerCase() === 'po' || 
+               userProfile?.position?.toLowerCase() === 'product owner' || 
+               userProfile?.position?.toLowerCase() === 'product owner (po)';
+  const isAdmin = userProfile?.role === 'hr-admin' || isPO;
   const isManager = userProfile?.role === 'manager';
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, isAuthReady, signOut, isAdmin, isManager }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, isAuthReady, signOut, isAdmin, isManager, isPO }}>
       {children}
     </AuthContext.Provider>
   );

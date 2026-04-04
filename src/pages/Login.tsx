@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db, doc, setDoc, Timestamp, getDocFromServer } from '../firebase';
 import { getDoc } from 'firebase/firestore';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -43,43 +43,6 @@ const Login: React.FC = () => {
     };
     checkInitialization();
   }, []);
-
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-
-      // If system is not initialized, we can use Google Login to initialize it
-      // but only if the user is the one specified in the rules or we want to allow first user
-      if (showSetup) {
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          name: user.displayName || 'Initial Admin',
-          email: user.email,
-          role: 'hr-admin',
-          createdAt: Timestamp.now(),
-          position: 'HR Manager',
-          employeeId: 'ADMIN-001'
-        });
-
-        await setDoc(doc(db, 'settings', 'status'), {
-          initialized: true,
-          initializedAt: Timestamp.now(),
-          initializedBy: user.uid
-        });
-      }
-
-      navigate('/');
-    } catch (err: any) {
-      console.error('Google login error:', err);
-      setError(err.message || 'Failed to login with Google');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSetupAdmin = async () => {
     if (!email || !password) {
@@ -232,23 +195,6 @@ const Login: React.FC = () => {
                 >
                   {loading ? 'Setting up...' : 'Setup Initial Admin'}
                 </button>
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-300"></div>
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-white text-gray-500">Or</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  disabled={loading}
-                  className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all"
-                >
-                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 mr-2" />
-                  Setup with Google
-                </button>
               </div>
             ) : (
               <div className="space-y-3">
@@ -258,23 +204,6 @@ const Login: React.FC = () => {
                   className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all"
                 >
                   {loading ? t('auth.signing_in') : t('auth.login')}
-                </button>
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-300"></div>
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-white text-gray-500">Or</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  disabled={loading}
-                  className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all"
-                >
-                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 mr-2" />
-                  Sign in with Google
                 </button>
               </div>
             )}

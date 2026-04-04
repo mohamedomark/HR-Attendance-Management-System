@@ -40,7 +40,7 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 const AppRoutes: React.FC = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isPO } = useAuth();
 
   return (
     <Routes>
@@ -48,7 +48,7 @@ const AppRoutes: React.FC = () => {
       
       <Route path="/" element={
         <ProtectedRoute>
-          {isAdmin ? <AdminDashboard /> : <Dashboard />}
+          {isAdmin && !isPO ? <AdminDashboard /> : <Dashboard />}
         </ProtectedRoute>
       } />
 
