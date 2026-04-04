@@ -350,7 +350,7 @@ const AdminDashboard: React.FC = () => {
           }
           updates.sessions = updatedSessions;
         }
-        else if (overrideStatus === 'completed' || overrideStatus === 'overtime' || overrideStatus === 'incomplete') {
+        else if (overrideStatus === 'completed' || overrideStatus === 'auto-completed' || overrideStatus === 'overtime' || overrideStatus === 'incomplete') {
           if (updatedSessions.length === 0) {
             updatedSessions.push({ id: Date.now().toString(), checkIn: now, checkOut: now });
           } else {
@@ -397,7 +397,7 @@ const AdminDashboard: React.FC = () => {
         }
 
         const emp = employees.find(e => e.uid === selectedRecord.uid);
-        if (checkIsPO(emp?.position) && overrideStatus !== 'completed' && overrideStatus !== 'overtime' && overrideStatus !== 'incomplete') {
+        if (checkIsPO(emp?.position) && overrideStatus !== 'completed' && overrideStatus !== 'auto-completed' && overrideStatus !== 'overtime' && overrideStatus !== 'incomplete') {
           const actualHoursNum = parseFloat(actualHoursInput);
           if (!isNaN(actualHoursNum) && actualHoursNum >= 0) {
             updates.actualHours = actualHoursNum;
@@ -570,6 +570,7 @@ const AdminDashboard: React.FC = () => {
             >
               <option value="all">{t('hr.filter_status')}</option>
               <option value="completed">{formatStatus('completed')}</option>
+              <option value="auto-completed">{formatStatus('auto-completed')}</option>
               <option value="incomplete">{formatStatus('incomplete')}</option>
               <option value="overtime">{formatStatus('overtime')}</option>
               <option value="working">{formatStatus('working')}</option>
@@ -720,6 +721,7 @@ const AdminDashboard: React.FC = () => {
                         <span className={cn(
                           "px-2 py-1 rounded-full text-xs font-medium w-fit",
                           record.status === 'completed' || record.status === 'overtime' ? "bg-green-100 text-green-700" :
+                          record.status === 'auto-completed' ? "bg-teal-100 text-teal-700" :
                           record.status === 'working' ? "bg-blue-100 text-blue-700" :
                           record.status === 'paused' ? "bg-yellow-100 text-yellow-700" :
                           record.status === 'incomplete' ? "bg-orange-100 text-orange-700" :
@@ -728,6 +730,11 @@ const AdminDashboard: React.FC = () => {
                         )}>
                           {formatStatus(record.status)}
                         </span>
+                        {record.autoClosed && (
+                          <span className="text-[10px] font-bold text-teal-600 uppercase tracking-tighter">
+                            Auto Closed
+                          </span>
+                        )}
                         {record.status === 'leave' && record.checkIn && record.checkOut && (
                           <span className="text-[10px] text-purple-600 font-bold uppercase tracking-wider">
                             Conflict
@@ -806,6 +813,7 @@ const AdminDashboard: React.FC = () => {
                   className="w-full p-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="completed">{formatStatus('completed')}</option>
+                  <option value="auto-completed">{formatStatus('auto-completed')}</option>
                   <option value="incomplete">{formatStatus('incomplete')}</option>
                   <option value="overtime">{formatStatus('overtime')}</option>
                   <option value="working">{formatStatus('working')}</option>

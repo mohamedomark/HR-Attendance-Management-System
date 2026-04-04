@@ -665,6 +665,7 @@ const Dashboard: React.FC = () => {
                         <span className={cn(
                           "px-2 py-1 rounded-full text-xs font-medium w-fit",
                           record.status === 'completed' || record.status === 'overtime' ? "bg-green-100 text-green-700" : 
+                          record.status === 'auto-completed' ? "bg-teal-100 text-teal-700" :
                           record.status === 'working' ? "bg-blue-100 text-blue-700" :
                           record.status === 'paused' ? "bg-yellow-100 text-yellow-700" :
                           record.status === 'incomplete' ? "bg-orange-100 text-orange-700" :
@@ -673,6 +674,11 @@ const Dashboard: React.FC = () => {
                         )}>
                           {formatStatus(record.status)}
                         </span>
+                        {record.autoClosed && (
+                          <span className="text-[10px] font-bold text-teal-600 uppercase tracking-tighter">
+                            Auto Closed
+                          </span>
+                        )}
                         {record.status === 'leave' && record.checkIn && record.checkOut && (
                           <span className="text-[10px] font-bold text-purple-600 uppercase tracking-tighter">
                             Conflict

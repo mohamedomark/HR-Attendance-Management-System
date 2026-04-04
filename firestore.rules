@@ -80,7 +80,7 @@ service cloud.firestore {
     }
 
     function isValidAttendance(data) {
-      let allowedFields = ['uid', 'date', 'checkIn', 'checkOut', 'status', 'workingHours', 'remainingHours', 'overtimeHours', 'manualOverride', 'overrideReason', 'updatedBy', 'pauses', 'actualHours', 'actualNotes', 'sessions'];
+      let allowedFields = ['uid', 'date', 'checkIn', 'checkOut', 'status', 'workingHours', 'remainingHours', 'overtimeHours', 'manualOverride', 'overrideReason', 'updatedBy', 'pauses', 'actualHours', 'actualNotes', 'sessions', 'autoClosed'];
       let allowedStatuses = ['absent', 'working', 'completed', 'incomplete', 'overtime', 'leave', 'paused', 'auto-completed'];
       
       return data.keys().hasOnly(allowedFields) &&
@@ -99,7 +99,8 @@ service cloud.firestore {
              (!('pauses' in data) || data.pauses is list) &&
              (!('sessions' in data) || data.sessions is list) &&
              (!('actualHours' in data) || (data.actualHours is number && data.actualHours >= 0)) &&
-             (!('actualNotes' in data) || (data.actualNotes is string && data.actualNotes.size() <= 1000));
+             (!('actualNotes' in data) || (data.actualNotes is string && data.actualNotes.size() <= 1000)) &&
+             (!('autoClosed' in data) || data.autoClosed is bool);
     }
 
     // ===============================================================

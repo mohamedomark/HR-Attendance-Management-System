@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import Employees from './pages/Employees';
 import Settings from './pages/Settings';
+import { AutoCheckOutService } from './components/AutoCheckOutService';
 
 import { Toaster } from 'sonner';
 
@@ -27,7 +28,12 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     return <Navigate to="/login" />;
   }
 
-  return <Layout>{children}</Layout>;
+  return (
+    <>
+      <AutoCheckOutService />
+      <Layout>{children}</Layout>
+    </>
+  );
 };
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {

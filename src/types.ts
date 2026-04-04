@@ -42,6 +42,7 @@ export interface AttendanceRecord {
   actualNotes?: string;
   manualOverride?: boolean;
   overrideReason?: string;
+  autoClosed?: boolean;
   updatedBy?: string;
   pauses?: PauseRecord[];
   sessions?: AttendanceSession[];
