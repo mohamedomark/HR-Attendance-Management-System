@@ -1,165 +1,254 @@
-# نظام إدارة الحضور والانصراف (HR Attendance Management System)
+# 🧠 HR Attendance Management System
 
-تطبيق ويب حديث لإدارة حضور الموظفين وانصرافهم، مبني بـ **React + TypeScript + Firebase**، ومصمم ليكون سهل الاستخدام للموظف والإدارة في نفس الوقت.
-
-> الهدف من المشروع: تحويل عملية الحضور اليومية من تسجيل يدوي متعب إلى تجربة رقمية واضحة، دقيقة، وسريعة.
+A production-ready HR Attendance Management System designed to handle real-world workforce tracking scenarios, including multi-session attendance, manual productivity tracking, and advanced business logic.
 
 ---
 
-## ✨ ماذا يفعل النظام؟
+## 🚀 Overview
 
-النظام يقدم تجربتين أساسيتين:
+This system enables organizations to track employee attendance, manage working hours, and calculate productivity metrics with flexibility and accuracy.
 
-### 1) تجربة الموظف
-- تسجيل الدخول بحسابه.
-- تنفيذ:
-  - **Check In** (بدء الدوام)
-  - **Pause / Resume** (استراحة / استكمال)
-  - **Check Out** (إنهاء الدوام)
-- متابعة حالة اليوم مباشرة (Working / Paused / Completed / Late ...).
-- عرض سجل الحضور السابق.
+It goes beyond basic check-in/check-out systems by supporting:
 
-### 2) تجربة مسؤول الموارد البشرية / الأدمن
-- لوحة متابعة شاملة للحضور اليومي لكل الموظفين.
-- فلترة وبحث حسب الاسم، التاريخ، الحالة.
-- إدارة الموظفين (إضافة / تعديل / حذف).
-- تعديل بعض قواعد النظام (مثل بداية الدوام ومدة السماح).
-- إمكانيات تعديل يدوي لحالات الحضور عند الحاجة.
+* Multi-session attendance per day
+* Manual "Actual Hours" tracking
+* Smart calculation of Remaining & Overtime
+* Role-based access control (Employee / Admin / Product Owner)
+* Auto check-out mechanism
+* Real-time dashboard and filtering
 
 ---
 
-## 🧱 التقنيات المستخدمة
+## 🏗️ Core Features
 
-- **Frontend:** React 19 + TypeScript + Vite
-- **Styling/UI:** Tailwind CSS + Lucide Icons
-- **Routing:** React Router
-- **Backend as a Service:** Firebase
-  - Authentication
-  - Firestore Database
-- **Notifications:** Sonner
+### 🔐 Authentication
+
+* Secure login using email & password
+* Remember Me functionality
+* Role-based access system
 
 ---
 
-## 📁 هيكل المشروع (مختصر)
+### 👥 Employee Management
 
-```text
-src/
-  components/     # مكونات واجهة قابلة لإعادة الاستخدام
-  contexts/       # إدارة الحالة العامة مثل المصادقة واللغة
-  pages/          # صفحات النظام الرئيسية
-  lib/            # دوال مساعدة وحسابات الوقت والحضور
-  firebase.ts     # إعداد Firebase وتصدير أدوات التعامل مع Firestore/Auth
-  types.ts        # تعريفات الأنواع TypeScript
+* Add / manage employees
+* Assign position (e.g., Product Owner, Employee)
+* Role-based permissions
+
+---
+
+### 🕒 Attendance System
+
+#### ✅ Standard Flow
+
+* Check-In
+* Check-Out
+* Pause
+
+#### 🔁 Multi-Session Support
+
+Employees can:
+
+* Check in/out multiple times per day
+* Handle urgent work outside normal hours
+
+Example:
+
+* Session 1 → 9:00 AM – 5:00 PM
+* Session 2 → 8:00 PM – 10:00 PM
+
+👉 Total attendance = sum of all sessions
+
+---
+
+### 🧮 Actual Hours (Product Owner Feature)
+
+* Entered manually by Product Owner (PO)
+* Represents actual productive work time
+* Can be:
+
+  * Less than attendance
+  * Equal
+  * Greater (overtime work)
+
+---
+
+### 📊 Smart Calculations
+
+All calculations are based on **Expected Working Hours (default = 8h/day)**
+
+#### ✔ Remaining Hours
+
+```
+Remaining = Expected - Actual
+```
+
+#### ✔ Overtime
+
+```
+Overtime = Actual - Expected (if positive)
+```
+
+#### ✔ Attendance Hours
+
+```
+Total = sum of all sessions per day
 ```
 
 ---
 
-## 🔐 الأدوار داخل النظام
+### 📅 Monthly Summary
 
-- **Employee:** يستخدم dashboard الموظف لإدارة يومه.
-- **HR Admin:** يصل للوحات الإدارة والإعدادات وإدارة الموظفين.
-- توجد معالجة خاصة لبعض الصلاحيات المرتبطة بمسمى **PO (Product Owner)** حسب منطق المشروع.
+Displays:
 
----
+* Total Worked Hours
+* Total Overtime
+* Total Missing (Remaining)
 
-## ⚙️ المتطلبات قبل التشغيل
-
-- **Node.js** (يفضل الإصدار 18 أو أحدث)
-- حساب Firebase مجهز بالمشروع (Auth + Firestore)
+> ⚠️ Efficiency was removed for simplicity and clarity.
 
 ---
 
-## 🚀 التشغيل محليًا
+### 🔍 Filtering
 
-1. تثبيت الحزم:
-   ```bash
-   npm install
-   ```
-
-2. تجهيز متغيرات البيئة:
-   - انسخ ملف البيئة:
-     ```bash
-     cp .env.example .env.local
-     ```
-   - عدّل القيم داخل `.env.local` حسب بيئتك.
-
-3. تشغيل السيرفر المحلي:
-   ```bash
-   npm run dev
-   ```
-
-4. افتح المتصفح على:
-   ```text
-   http://localhost:3000
-   ```
+* Filter by date / month
+* All summary calculations dynamically update based on filtered data
 
 ---
 
-## 🧪 أوامر مفيدة أثناء التطوير
+### ⚙️ Settings
 
-- تشغيل التطبيق محليًا:
-  ```bash
-  npm run dev
-  ```
-- فحص الأنواع (TypeScript):
-  ```bash
-  npm run lint
-  ```
-- بناء نسخة Production:
-  ```bash
-  npm run build
-  ```
-- معاينة نسخة الإنتاج محليًا:
-  ```bash
-  npm run preview
-  ```
+* Configure:
+
+  * Work start time
+  * Grace period
+  * Auto check-out time
 
 ---
 
-## 🔥 إعداد Firebase (مهم جدًا)
+### ⏱️ Auto Check-Out
 
-لكي يعمل المشروع بشكل صحيح:
+Automatically closes open sessions when:
 
-1. فعّل **Email/Password Authentication** من Firebase Console.
-2. تأكد من إعداد Firestore وقواعد الصلاحيات بما يناسب بيئتك.
-3. تأكد أن ملف `firebase-applet-config.json` يحتوي إعدادات مشروع Firebase الصحيحة.
+```
+Current Time ≥ Auto Check-out Time
+```
 
-> ملاحظة: أول تشغيل قد يطلب تهيئة حساب أدمن أولي حسب حالة مستندات الإعداد داخل Firestore.
+Prevents:
 
----
-
-## 🌍 دعم اللغة
-
-التطبيق يدعم **العربية والإنجليزية** مع مراعاة اتجاه النص (RTL/LTR) لواجهة مريحة في الاستخدام.
+* Open sessions overnight
+* Incorrect attendance data
 
 ---
 
-## 📌 ملاحظات تشغيل مهمة
+## 🧠 Business Logic Highlights
 
-- أي مشاكل في تسجيل الدخول غالبًا سببها إعدادات Firebase Authentication.
-- أي مشاكل في القراءة/الكتابة غالبًا مرتبطة بقواعد Firestore Security Rules.
-- تأكد أن الوقت والتاريخ مضبوطين جيدًا في بيئة التشغيل لأن حسابات الحضور تعتمد عليهم.
+### ✔ Separation of Concerns
 
----
-
-## 🤝 المساهمة والتطوير
-
-لو حابب تطور في المشروع:
-
-1. اعمل Fork.
-2. أنشئ فرع جديد لميزة/إصلاح.
-3. نفّذ التعديلات مع اختبارها.
-4. افتح Pull Request واضح ومباشر.
+* Attendance = presence tracking
+* Actual Hours = productivity tracking
 
 ---
 
-## 📄 الترخيص
+### ✔ Correct Calculation Model
 
-يمكنك إضافة نوع الترخيص المناسب لفريقك/شركتك هنا (مثل MIT أو ترخيص داخلي خاص).
+All productivity metrics depend on:
+
+```
+Actual vs Expected (NOT Attendance)
+```
 
 ---
 
-## 💬 الخلاصة
+### ✔ Multi-Session Aggregation
 
-هذا المشروع مناسب جدًا كقاعدة قوية لنظام حضور عملي داخل الشركات،
-وبنية الكود الحالية تسمح بالتوسع مستقبلًا (تقارير أكثر، تكاملات إضافية، سياسات حضور متقدمة)
+* All sessions are combined per day
+* Fully reflected in calculations and UI
+
+---
+
+### ✔ Role System
+
+| Role          | Permissions                                          |
+| ------------- | ---------------------------------------------------- |
+| Employee      | Check-in/out, view own data                          |
+| Product Owner | Employee + full dashboard access + edit Actual Hours |
+| Admin / HR    | Full system access                                   |
+
+---
+
+## 🖥️ UI/UX Highlights
+
+* Clean dashboard design
+* Sessions displayed vertically for clarity
+* Totals clearly separated
+* Responsive layout
+
+---
+
+## 🧪 Testing & Validation
+
+The system includes full validation of:
+
+* Authentication
+* Role permissions
+* Multi-session behavior
+* Actual vs Expected calculations
+* Filtering logic
+* Auto check-out
+* Settings stability
+
+All tests ensure:
+
+* No regression bugs
+* No data loss
+* Stable production behavior
+
+---
+
+## ⚠️ Edge Cases Handled
+
+* Missing check-out
+* Multiple sessions in one day
+* Actual hours greater than expected
+* No data scenarios
+* Filtering with empty results
+
+---
+
+## 🛡️ Stability & Data Safety
+
+* Backward compatible (old data still works)
+* Non-destructive updates
+* No database reset required
+* Safe enhancements only
+
+---
+
+## 📌 Future Enhancements (Optional)
+
+* Overtime approval workflow
+* Task-based actual hours tracking
+* Advanced analytics dashboard
+* Notifications & alerts
+* Automation testing integration
+
+---
+
+## 💡 Conclusion
+
+This system is designed with real-world HR needs in mind, combining:
+
+* Accurate attendance tracking
+* Flexible work scenarios
+* Strong business logic
+* Scalable architecture
+
+It reflects production-level thinking and is suitable for enterprise environments.
+
+---
+
+## 👨‍💻 Author
+
+Mohamed Omar
+Software Test Engineer | Automation Enthusiast
