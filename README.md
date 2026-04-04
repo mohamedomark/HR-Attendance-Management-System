@@ -251,4 +251,4 @@ It reflects production-level thinking and is suitable for enterprise environment
 ## 👨‍💻 Author
 
 Mohamed Omar
-Software Test Engineer | Automation Enthusiast
+Technical Product Owner | ABG Egypt
